@@ -1,0 +1,6 @@
+{
+  "watch": ["src/server.ts", "src/config/db.ts"],
+  "ext": "ts",
+  "ignore": ["src/controllers/*", "src/routes/*", "src/models/*", "src/middleware/*", "src/utils/*", "src/config/seeder.ts"],
+  "exec": "tsx src/server.ts"
+}
