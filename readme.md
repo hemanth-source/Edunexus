@@ -1,4 +1,4 @@
-# Edunexus 🎓
+# Edunexus LMS & University Portal 🎓
 
 Edunexus is an immersive, state-of-the-art EdTech Learning Management System (LMS) and University Portal. It features advanced course planning, class scheduling, automated exam creation, student submissions, and dynamic interactive dashboards customized for **Admins, Teachers, Students, and Parents**.
 
