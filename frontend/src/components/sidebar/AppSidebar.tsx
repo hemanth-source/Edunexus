@@ -115,7 +115,7 @@ export const sidebardata = {
       items: [
         { title: "Assignments", url: "/lms/assignments" },
         { title: "Exams", url: "/lms/exams" },
-        { title: "Study Materials", url: "/lms/materials" },
+        { title: "Live Class & Resources", url: "/lms/materials" },
       ],
     },
     {

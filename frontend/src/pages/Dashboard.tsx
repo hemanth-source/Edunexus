@@ -158,7 +158,7 @@ export default function Dashboard() {
                 className="justify-start"
                 onClick={() => navigate("/lms/materials")}
               >
-                <FileText className="mr-2 h-4 w-4" /> Study Materials
+                <FileText className="mr-2 h-4 w-4" /> Live Class & Resources
               </Button>
               {user?.role === "admin" && (
                 <Button

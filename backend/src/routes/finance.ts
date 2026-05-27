@@ -14,7 +14,7 @@ const financeRouter = express.Router();
 
 financeRouter.get("/fees", protect, authorize(["admin", "parent"]), getFees);
 financeRouter.post("/fees/create", protect, authorize(["admin"]), createFee);
-financeRouter.patch("/fees/:id/pay", protect, authorize(["admin"]), payFee);
+financeRouter.patch("/fees/:id/pay", protect, authorize(["admin", "parent"]), payFee);
 
 financeRouter.get("/expenses", protect, authorize(["admin"]), getExpenses);
 financeRouter.post("/expenses/create", protect, authorize(["admin"]), createExpense);

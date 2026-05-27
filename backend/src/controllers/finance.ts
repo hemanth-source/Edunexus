@@ -3,6 +3,7 @@ import Fee from "../models/fee.ts";
 import Expense from "../models/expense.ts";
 import Salary from "../models/salary.ts";
 import Notification from "../models/notification.ts";
+import User from "../models/user.ts";
 import { logActivity } from "../utils/activitieslog.ts";
 
 // ==================== FEE COLLECTION ====================
@@ -53,6 +54,18 @@ export const createFee = async (req: Request, res: Response) => {
       type: "fee",
     });
 
+    // Auto-Notify Parent (if linked)
+    const student = await User.findById(studentId);
+    if (student?.parent) {
+      await Notification.create({
+        recipient: student.parent,
+        sender: (req as any).user._id,
+        title: "Fee Invoice for Your Child",
+        message: `A fee invoice of $${amount} has been issued for ${student.name}. Payment is due by ${new Date(dueDate).toLocaleDateString()}.`,
+        type: "fee",
+      });
+    }
+
     await logActivity({
       userId: (req as any).user._id,
       action: `Invoiced fee of $${amount} to student: ${studentId}`,
@@ -75,10 +88,22 @@ export const payFee = async (req: Request, res: Response) => {
       id,
       { status: "paid", paidAt: new Date() },
       { new: true }
-    ).populate("student", "name");
+    ).populate("student", "name parent");
 
     if (!fee) {
       return res.status(404).json({ message: "Fee record not found." });
+    }
+
+    // Notify the parent that payment was successful
+    const student = await User.findById(fee.student._id);
+    if (student?.parent) {
+      await Notification.create({
+        recipient: student.parent,
+        sender: (req as any).user._id,
+        title: "Fee Payment Confirmed",
+        message: `Payment of $${fee.amount} for ${student.name} has been successfully recorded.`,
+        type: "fee",
+      });
     }
 
     await logActivity({

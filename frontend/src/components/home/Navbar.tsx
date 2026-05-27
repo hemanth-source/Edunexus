@@ -89,7 +89,7 @@ const Navbar = () => {
                 href="/#programs"
                 className="text-gray-600 dark:text-gray-300 hover:text-[#3ecf8e] transition-colors font-medium"
               >
-                Programs
+                Courses
               </a>
               <a
                 href="/#assistant"
@@ -145,7 +145,7 @@ const Navbar = () => {
               onClick={() => setIsOpen(false)}
               className="block text-gray-600 dark:text-gray-300 hover:text-[#3ecf8e] text-lg font-medium"
             >
-              Programs
+              Courses
             </a>
             <a
               href="/#assistant"
