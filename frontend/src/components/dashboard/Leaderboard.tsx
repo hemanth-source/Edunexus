@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/hooks/AuthProvider";
+
 import {
   Card,
   CardContent,
@@ -33,7 +33,6 @@ interface LeaderboardData {
 }
 
 export function LeaderboardWidget() {
-  const { user } = useAuth();
   const [data, setData] = useState<LeaderboardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedClassId, setSelectedClassId] = useState<string>("");
