@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 interface EmailOptions {
   to: string;
@@ -7,52 +7,38 @@ interface EmailOptions {
 }
 
 /**
- * Utility to send emails using Nodemailer.
- * Currently uses Ethereal Email (a fake SMTP service) for testing.
- * The console will print a Preview URL to view the email.
+ * Utility to send emails using the Resend HTTP API.
+ * This bypasses Render's strict SMTP firewall.
  */
 export const sendEmail = async (options: EmailOptions) => {
   try {
-    // For development, we generate a test account if no SMTP is configured in .env
-    const host = process.env.SMTP_HOST || "smtp.ethereal.email";
-    const port = Number(process.env.SMTP_PORT) || 587;
-    let user = process.env.SMTP_USER;
-    let pass = process.env.SMTP_PASS;
+    const resendApiKey = process.env.RESEND_API_KEY;
 
-    if (!user || !pass) {
-      // Fallback to Ethereal dummy account if no env vars exist
-      const testAccount = await nodemailer.createTestAccount();
-      user = testAccount.user;
-      pass = testAccount.pass;
+    if (!resendApiKey) {
+      console.warn("⚠️ RESEND_API_KEY is not set. Email will not be sent.");
+      return null;
     }
 
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    const resend = new Resend(resendApiKey);
 
-    const info = await transporter.sendMail({
-      from: '"Edunexus Support" <noreply@edunexus.com>',
+    // If using the free tier of Resend without a verified domain,
+    // you can only send emails TO the email address you registered with!
+    const { data, error } = await resend.emails.send({
+      from: 'Edunexus Support <onboarding@resend.dev>',
       to: options.to,
       subject: options.subject,
       html: options.html,
     });
 
-    console.log(`\n📧 Email sent successfully to ${options.to}`);
-    console.log(`Message ID: ${info.messageId}`);
-    
-    // Ethereal URL where you can view the email in your browser
-    const previewUrl = nodemailer.getTestMessageUrl(info);
-    if (previewUrl) {
-      console.log(`👀 Preview URL: ${previewUrl}\n`);
+    if (error) {
+      console.error("❌ Resend API Error:", error);
+      return null;
     }
 
-    return info;
+    console.log(`\n📧 Email sent successfully to ${options.to} via Resend`);
+    console.log(`Message ID: ${data?.id}\n`);
+
+    return data;
   } catch (error) {
     console.error("❌ Error sending email:", error);
   }
