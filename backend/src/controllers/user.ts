@@ -5,6 +5,7 @@ import { logActivity } from "../utils/activitieslog.ts";
 import type { AuthRequest } from "../middleware/auth.ts";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
+import { sendEmail } from "../utils/sendEmail.ts";
 
 // @desc    Register a new user
 // @route   POST /api/users/register
@@ -57,6 +58,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         await User.updateMany({ _id: { $in: studentIds } }, { parent: newUser._id });
       }
 
+
       // we don't have req.user type defined, so we use a type assertion
       if ((req as any).user) {
         await logActivity({
@@ -65,11 +67,31 @@ export const register = async (req: Request, res: Response): Promise<void> => {
           details: `Registered user with email: ${newUser.email}`,
         });
       }
+      
       const populatedNewUser = await User.findById(newUser._id)
         .populate("studentClass", "_id name section")
         .populate("teacherSubject", "_id name code")
         .populate("parent", "_id name email")
         .populate("parentOf", "_id name email");
+
+      // Send Welcome Email
+      sendEmail({
+        to: newUser.email,
+        subject: "Welcome to Edunexus LMS!",
+        html: `
+          <div style="font-family: sans-serif; max-w-lg margin: auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
+            <h2 style="color: #4F46E5;">Welcome to Edunexus, ${newUser.name}!</h2>
+            <p>Your account has been successfully created. You can log in to the portal using the following credentials:</p>
+            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+              <strong>Email:</strong> ${newUser.email}<br/>
+              <strong>Password:</strong> ${password}<br/>
+              <strong>Role:</strong> ${newUser.role}
+            </div>
+            <p>We recommend changing your password after your first login.</p>
+            <p style="color: #6b7280; font-size: 0.9em; margin-top: 30px;">- The Edunexus Team</p>
+          </div>
+        `,
+      });
 
       res.status(201).json({
         _id: populatedNewUser?._id,

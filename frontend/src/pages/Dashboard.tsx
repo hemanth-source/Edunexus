@@ -18,6 +18,7 @@ import { Calendar, FileText, CheckCircle2 } from "lucide-react";
 // Custom Components
 import { AiInsightWidget } from "@/components/dashboard/ai-insight-widget";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
+import { LeaderboardWidget } from "@/components/dashboard/Leaderboard";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -100,6 +101,9 @@ export default function Dashboard() {
         <div className="col-span-4 space-y-4">
           {/* AI WIDGET */}
           <AiInsightWidget />
+
+          {/* GAMIFICATION LEADERBOARD */}
+          <LeaderboardWidget />
 
           {/* RECENT ACTIVITY CARD */}
           {user?.role === "admin" && (

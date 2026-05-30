@@ -116,6 +116,7 @@ export const sidebardata = {
         { title: "Assignments", url: "/lms/assignments" },
         { title: "Exams", url: "/lms/exams" },
         { title: "Live Class & Resources", url: "/lms/materials" },
+        { title: "AI Study Assistant (Aura)", url: "https://aura-glrg.vercel.app/", roles: ["student"] },
       ],
     },
     {

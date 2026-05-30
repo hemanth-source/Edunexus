@@ -65,10 +65,15 @@ export function NavMain({
                           subItem.isActive && "bg-primary text-white"
                         )}
                       >
-                        {/* here is where the issue was, <a> tag was used causing that reload change to react-router link */}
-                        <Link to={subItem.url}>
-                          <span>{subItem.title}</span>
-                        </Link>
+                        {subItem.url.startsWith("http") ? (
+                          <a href={subItem.url} target="_blank" rel="noopener noreferrer">
+                            <span>{subItem.title}</span>
+                          </a>
+                        ) : (
+                          <Link to={subItem.url}>
+                            <span>{subItem.title}</span>
+                          </Link>
+                        )}
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   ))}

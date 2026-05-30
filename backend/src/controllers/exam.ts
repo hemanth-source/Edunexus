@@ -5,6 +5,8 @@ import Subject from "../models/subject.ts";
 import Class from "../models/class.ts";
 import Submission from "../models/submission.ts";
 import { inngest } from "../inngest/index.ts";
+import User from "../models/user.ts";
+import { sendEmail } from "../utils/sendEmail.ts";
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
@@ -260,6 +262,30 @@ export const toggleExamStatus = async (req: Request, res: Response) => {
     // Toggle the status
     exam.isActive = !exam.isActive;
     await exam.save();
+    
+    // Send email notification to students if the exam was just activated
+    if (exam.isActive) {
+      const students = await User.find({ role: "student", studentClass: exam.class });
+      for (const student of students) {
+        if (student.email) {
+          sendEmail({
+            to: student.email,
+            subject: `New Exam Available: ${exam.title}`,
+            html: `
+              <div style="font-family: sans-serif; max-w-lg margin: auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
+                <h2 style="color: #4F46E5;">New Exam Assigned!</h2>
+                <p>Hello ${student.name},</p>
+                <p>A new exam "<strong>${exam.title}</strong>" has been activated for your class by your teacher.</p>
+                <p>Please log into the Edunexus portal to view and complete the exam before the due date.</p>
+                <a href="${process.env.CLIENT_URL || "http://localhost:5173"}/exams" style="display: inline-block; padding: 10px 20px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px; margin-top: 15px;">Go to Exams</a>
+                <p style="color: #6b7280; font-size: 0.9em; margin-top: 30px;">- Edunexus Academic Dept</p>
+              </div>
+            `,
+          });
+        }
+      }
+    }
+
     const userId = (req as any).user._id;
     await logActivity({ userId, action: "User toggled exam status" });
     res.json({

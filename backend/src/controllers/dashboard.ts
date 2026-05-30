@@ -6,6 +6,7 @@ import Submission from "../models/submission.ts";
 import ActivityLog from "../models/activitieslog.ts";
 import Timetable from "../models/timetable.ts";
 import Attendance from "../models/attendance.ts";
+import LeaderboardBonus from "../models/leaderboardBonus.ts";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 
@@ -299,3 +300,70 @@ export const generateDashboardInsight = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message || "Failed to generate AI insight" });
   }
 };
+
+// @desc    Get Gamified Leaderboard Data
+// @route   GET /api/dashboard/leaderboard
+// @access  Private
+export const getLeaderboard = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    
+    // We fetch leaderboard per class. Admin/teacher might see all or select, students see their own.
+    // For simplicity, we get all classes and compute top 5 for each.
+    // In a massive system, this would be heavily optimized or cached.
+    let classQuery = {};
+    if (user.role === "student" && user.studentClass) {
+      classQuery = { _id: user.studentClass };
+    } else if (req.query.classId) {
+      classQuery = { _id: req.query.classId };
+    }
+
+    const classes = await Class.find(classQuery).select("_id name");
+    console.log(`[getLeaderboard] User Role: ${user.role}, classQuery:`, classQuery, `Found classes: ${classes.length}`);
+    
+    const leaderboards = [];
+
+    for (const cls of classes) {
+      // Find students in this class
+      const students = await User.find({ role: "student", studentClass: cls._id.toString() }).select("_id name");
+      console.log(`[getLeaderboard] Class ${cls.name} has ${students.length} students`);
+      
+      const studentScores = await Promise.all(students.map(async (student) => {
+        // 1. Exam Scores
+        const submissions = await Submission.find({ student: student._id }).select("score");
+        const examScore = submissions.reduce((sum, sub) => sum + sub.score, 0);
+
+        // 2. Attendance Points (1 point per present/late day)
+        const attendanceDays = await Attendance.countDocuments({
+          student: student._id,
+          status: { $in: ["present", "late"] },
+        });
+
+        const totalScore = examScore + attendanceDays;
+
+        return {
+          studentId: student._id,
+          name: student.name,
+          score: totalScore,
+          breakdown: { exams: examScore, attendance: attendanceDays }
+        };
+      }));
+
+      // Sort descending and get top 5
+      studentScores.sort((a, b) => b.score - a.score);
+      const top5 = studentScores.slice(0, 5);
+
+      leaderboards.push({
+        classId: cls._id,
+        className: cls.name,
+        topStudents: top5,
+      });
+    }
+
+    res.json(leaderboards);
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error });
+  }
+};
+
+

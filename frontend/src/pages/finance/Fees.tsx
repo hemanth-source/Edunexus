@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { DollarSign, CheckCircle2, Plus, AlertCircle, CreditCard, Lock, Sparkles, ArrowRight, X } from "lucide-react";
+import { DollarSign, CheckCircle2, Plus, AlertCircle, CreditCard, Lock, Sparkles, ArrowRight } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";

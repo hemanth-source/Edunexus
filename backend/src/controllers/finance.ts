@@ -5,6 +5,7 @@ import Salary from "../models/salary.ts";
 import Notification from "../models/notification.ts";
 import User from "../models/user.ts";
 import { logActivity } from "../utils/activitieslog.ts";
+import { sendEmail } from "../utils/sendEmail.ts";
 
 // ==================== FEE COLLECTION ====================
 
@@ -94,7 +95,7 @@ export const payFee = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Fee record not found." });
     }
 
-    // Notify the parent that payment was successful
+// Notify the parent that payment was successful
     const student = await User.findById(fee.student._id);
     if (student?.parent) {
       await Notification.create({
@@ -104,6 +105,22 @@ export const payFee = async (req: Request, res: Response) => {
         message: `Payment of $${fee.amount} for ${student.name} has been successfully recorded.`,
         type: "fee",
       });
+
+      const parentUser = await User.findById(student.parent);
+      if (parentUser && parentUser.email) {
+        sendEmail({
+          to: parentUser.email,
+          subject: `Payment Receipt: $${fee.amount} for ${student.name}`,
+          html: `
+            <div style="font-family: sans-serif; max-w-lg margin: auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
+              <h2 style="color: #10B981;">Payment Confirmed</h2>
+              <p>Dear ${parentUser.name},</p>
+              <p>Thank you for your payment. We have successfully recorded your payment of <strong>$${fee.amount}</strong> for student <strong>${student.name}</strong>.</p>
+              <p style="color: #6b7280; font-size: 0.9em; margin-top: 30px;">- Edunexus Finance Dept</p>
+            </div>
+          `,
+        });
+      }
     }
 
     await logActivity({
