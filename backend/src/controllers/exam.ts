@@ -277,7 +277,7 @@ export const toggleExamStatus = async (req: Request, res: Response) => {
                 <p>Hello ${student.name},</p>
                 <p>A new exam "<strong>${exam.title}</strong>" has been activated for your class by your teacher.</p>
                 <p>Please log into the Edunexus portal to view and complete the exam before the due date.</p>
-                <a href="${process.env.CLIENT_URL || "http://localhost:5173"}/exams" style="display: inline-block; padding: 10px 20px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px; margin-top: 15px;">Go to Exams</a>
+                <a href="${process.env.CLIENT_URL}/exams" style="display: inline-block; padding: 10px 20px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px; margin-top: 15px;">Go to Exams</a>
                 <p style="color: #6b7280; font-size: 0.9em; margin-top: 30px;">- Edunexus Academic Dept</p>
               </div>
             `,

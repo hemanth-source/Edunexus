@@ -350,9 +350,12 @@ export const getUserProfile = async (req: AuthRequest, res: Response) => {
 // @access  Public
 export const logoutUser = async (req: Request, res: Response) => {
   try {
+    const isProduction = process.env.STAGE === "production" || process.env.NODE_ENV === "production";
     res.cookie("jwt", "", {
       httpOnly: true,
       expires: new Date(0), //expire the cookie immediately
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
     res.json({ message: "Logged out successfully" });
   } catch (error) {

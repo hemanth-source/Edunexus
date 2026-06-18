@@ -8,6 +8,7 @@ import express, {
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
+import path from "path";
 import cors from "cors";
 
 import { connectDB } from "./config/db.ts";
@@ -34,7 +35,10 @@ import schoolSettingsRouter from "./routes/schoolSettings.ts";
 import notificationRouter from "./routes/notification.ts";
 import certificateRouter from "./routes/certificate.ts";
 
-// Load environment variables from .env file
+// Load environment variables based on NODE_ENV
+const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env.development";
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+// Fallback
 dotenv.config();
 
 const app: Application = express();
@@ -55,12 +59,7 @@ if (process.env.STAGE === "development") {
 
 // cross-origin resource sharing (CORS) middleware
 // credentials: true allows cookies to be sent with requests
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-];
+const allowedOrigins = process.env.CLIENT_URL ? [process.env.CLIENT_URL] : [];
 
 app.use(
   cors({
@@ -68,9 +67,7 @@ app.use(
       // Allow requests with no origin (like curl, postman, or mobile apps)
       if (!origin) return callback(null, true);
       
-      // Allow any localhost origins in development
-      const isLocalhost = origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
-      if (isLocalhost || allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       
