@@ -59,7 +59,7 @@ if (process.env.STAGE === "development") {
 
 // cross-origin resource sharing (CORS) middleware
 // credentials: true allows cookies to be sent with requests
-const allowedOrigins = process.env.CLIENT_URL ? [process.env.CLIENT_URL] : [];
+const allowedOrigins = process.env.CLIENT_URL ? [process.env.CLIENT_URL, "http://localhost:5173"] : ["http://localhost:5173"];
 
 app.use(
   cors({
