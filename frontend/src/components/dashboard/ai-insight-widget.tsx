@@ -4,19 +4,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import { toast } from "sonner";
 
 export function AiInsightWidget() {
   const [insight, setInsight] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const generateInsight = async () => {
     setLoading(true);
+    setError(false);
     try {
       const { data } = await api.post("/dashboard/insight");
       setInsight(data.text);
-    } catch (e) {
-      toast.error("Could not generate insight");
+    } catch {
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -51,6 +52,15 @@ export function AiInsightWidget() {
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-[90%]" />
             <Skeleton className="h-4 w-[60%]" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              Could not generate an insight right now.
+            </p>
+            <Button size="sm" variant="outline" onClick={generateInsight}>
+              <RefreshCw className="h-3 w-3 mr-1.5" /> Try Again
+            </Button>
           </div>
         ) : insight ? (
           <div className="flex gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-500">

@@ -68,11 +68,11 @@ export const getAllClasses = async (req: Request, res: Response) => {
       classes.map(async (c) => {
         const enrolledStudents = await User.find({
           role: "student",
-          studentClass: c._id,
+          studentClass: c._id as any,
         }).select("_id name email");
 
         const obj = c.toObject();
-        obj.students = enrolledStudents;
+        obj.students = enrolledStudents as any;
         return obj;
       })
     );

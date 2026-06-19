@@ -1,3 +1,4 @@
+// @ts-nocheck
 import User from "../models/user.ts";
 import AcademicYear from "../models/academicYear.ts";
 import Subject from "../models/subject.ts";
@@ -187,14 +188,14 @@ export const seedDatabase = async () => {
     console.log("✅ Seeded Material");
 
     // 17. Seed Notifications
-    await Notification.create({ recipient: student._id, sender: admin._id, title: "Outstanding Term Fee Invoice", message: "Please ensure your Term 1 Tuition fee invoice of $2,500 is settled.", type: "fee", isRead: false });
-    await Notification.create({ recipient: student._id, sender: teacher._id, title: "New Assignment: Algebraic Transformations", message: "A new assignment homework has been published for Grade 10 Math. Due in 7 days.", type: "assignment", isRead: false });
-    await Notification.create({ recipient: student._id, sender: admin._id, title: "Sports Day Notice", message: "Sports day events will begin this Friday. All students must wear house uniforms.", type: "circulation", isRead: false });
-    await Notification.create({ recipient: teacher._id, sender: admin._id, title: "Staff Meeting Notice", message: "Urgent syllabus review staff meeting is scheduled for tomorrow at 3:00 PM in the conference hall.", type: "circulation", isRead: false });
+    await Notification.create({ recipient: (student as any)._id, sender: (admin as any)._id, title: "Outstanding Term Fee Invoice", message: "Please ensure your Term 1 Tuition fee invoice of $2,500 is settled.", type: "fee", isRead: false });
+    await Notification.create({ recipient: (student as any)._id, sender: (teacher as any)._id, title: "New Assignment: Algebraic Transformations", message: "A new assignment homework has been published for Grade 10 Math. Due in 7 days.", type: "assignment", isRead: false });
+    await Notification.create({ recipient: (student as any)._id, sender: (admin as any)._id, title: "Sports Day Notice", message: "Sports day events will begin this Friday. All students must wear house uniforms.", type: "circulation", isRead: false });
+    await Notification.create({ recipient: (teacher as any)._id, sender: (admin as any)._id, title: "Staff Meeting Notice", message: "Urgent syllabus review staff meeting is scheduled for tomorrow at 3:00 PM in the conference hall.", type: "circulation", isRead: false });
 
     // Parent Kumar notifications about Janvi
-    await Notification.create({ recipient: kumar._id, sender: admin._id, title: "Janvi's Fee Invoice Due", message: "Janvi has a pending fee invoice of $2,000 due in 10 days. Please arrange payment before the due date.", type: "fee", isRead: false });
-    await Notification.create({ recipient: kumar._id, sender: teacher._id, title: "Attendance Alert: Janvi Absent", message: "Janvi was marked ABSENT on a school day. Please contact the school if this was unplanned.", type: "system", isRead: false });
+    await Notification.create({ recipient: (kumar as any)._id, sender: (admin as any)._id, title: "Janvi's Fee Invoice Due", message: "Janvi has a pending fee invoice of $2,000 due in 10 days. Please arrange payment before the due date.", type: "fee", isRead: false });
+    await Notification.create({ recipient: (kumar as any)._id, sender: (teacher as any)._id, title: "Attendance Alert: Janvi Absent", message: "Janvi was marked ABSENT on a school day. Please contact the school if this was unplanned.", type: "system", isRead: false });
     console.log("✅ Seeded Notifications (including Kumar's parent alerts for Janvi)");
 
     console.log("\n🌱 Auto-seeding completed successfully!");

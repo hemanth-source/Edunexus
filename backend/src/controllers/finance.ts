@@ -125,7 +125,7 @@ export const payFee = async (req: Request, res: Response) => {
 
     await logActivity({
       userId: (req as any).user._id,
-      action: `Recorded fee payment of $${fee.amount} for student: ${fee.student.name}`,
+      action: `Recorded fee payment of $${fee.amount} for student: ${(fee.student as any).name}`,
     });
 
     res.status(200).json(fee);

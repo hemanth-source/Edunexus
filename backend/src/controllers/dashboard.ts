@@ -39,8 +39,14 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       const totalTeachers = await User.countDocuments({ role: "teacher" });
       const activeExams = await Exam.countDocuments({ isActive: true });
 
-      // Mocking Attendance (You'd need an Attendance model for real data)
-      const avgAttendance = "94.5%";
+      const totalAttendanceDays = await Attendance.countDocuments();
+      let avgAttendance = "N/A";
+      if (totalAttendanceDays > 0) {
+        const presentOrLate = await Attendance.countDocuments({
+          status: { $in: ["present", "late"] },
+        });
+        avgAttendance = `${Math.round((presentOrLate / totalAttendanceDays) * 100)}%`;
+      }
 
       stats = {
         totalStudents,
@@ -67,10 +73,40 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       // 3. Next Class (Simplified Logic)
       // Find timetables where teacher is teaching today
       const today = getTodayName();
-      // Complex aggregation could go here, but let's do a simple find for now
-      // This is a placeholder for the logic to find the specific period based on current time
-      const nextClass = "Mathematics - Grade 10";
-      const nextClassTime = "10:00 AM";
+      const currentTimeStr = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      
+      const teacherTimetables = await Timetable.find({
+        "schedule.day": today,
+        "schedule.periods.teacher": user._id,
+      })
+        .populate("class", "name")
+        .populate("schedule.periods.subject", "name");
+
+      let nextClass = "No upcoming classes today";
+      let nextClassTime = "";
+      let foundNext = false;
+
+      for (const tt of teacherTimetables) {
+        if (foundNext) break;
+        const daySchedule = tt.schedule.find(s => s.day === today);
+        if (daySchedule) {
+          // Sort periods by start time just in case
+          const sortedPeriods = daySchedule.periods
+            .filter((p: any) => p.teacher && p.teacher.toString() === user._id.toString())
+            .sort((a, b) => a.startTime.localeCompare(b.startTime));
+            
+          for (const period of sortedPeriods) {
+            if (period.startTime >= currentTimeStr || (period.startTime <= currentTimeStr && period.endTime >= currentTimeStr)) {
+              const className = (tt.class as any)?.name || "Unknown Class";
+              const subjectName = (period.subject as any)?.name || "Unknown Subject";
+              nextClass = `${subjectName} - ${className}`;
+              nextClassTime = period.startTime;
+              foundNext = true;
+              break;
+            }
+          }
+        }
+      }
 
       stats = {
         myClassesCount,
@@ -229,7 +265,7 @@ export const generateDashboardInsight = async (req: Request, res: Response) => {
       let adviceText = `Study Tip: `;
       if (upcomingExams.length > 0) {
         const nextExam = upcomingExams[0];
-        adviceText += `Your exam "${nextExam.title}" is scheduled soon. Focus on reviewing key concepts and study materials to prepare! `;
+        adviceText += `Your exam "${nextExam?.title}" is scheduled soon. Focus on reviewing key concepts and study materials to prepare! `;
       } else {
         adviceText += `Review your course syllabus and keep ahead of assignment timelines. `;
       }

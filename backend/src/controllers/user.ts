@@ -1,5 +1,7 @@
 import { type Request, type Response } from "express";
 import User from "../models/user.ts";
+import Class from "../models/class.ts";
+import Exam from "../models/exam.ts";
 import { generateToken } from "../utils/generateToken.ts";
 import { logActivity } from "../utils/activitieslog.ts";
 import type { AuthRequest } from "../middleware/auth.ts";
@@ -375,6 +377,14 @@ export const publicAiGuide = async (req: Request, res: Response) => {
 
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
+    // Fetch real platform metrics from the database
+    const [totalStudents, totalTeachers, totalClasses, activeExams] = await Promise.all([
+      User.countDocuments({ role: "student" }),
+      User.countDocuments({ role: "teacher" }),
+      Class.countDocuments({}),
+      Exam.countDocuments({ isActive: true }),
+    ]);
+
     if (apiKey) {
       try {
         const google = createGoogleGenerativeAI({ apiKey });
@@ -382,14 +392,12 @@ export const publicAiGuide = async (req: Request, res: Response) => {
           model: google("gemini-1.5-flash"),
           prompt: `You are Aura, the premier AI Academic Guide for Edunexus. Edunexus is an all-in-one next-generation technology-driven university platform that natively integrates an LMS, administration tools (timetables, classes, attendance), communications (notification hub), and monetization/finance tools (student fee invoices, teacher payroll, expense reports).
           
-          Key metrics about Edunexus:
-          - 12k+ Active Students
-          - 98% Graduate Hire Rate
-          - Ranked #1 in Tech Innovation
-          - 250+ Research Labs
-          - 15 Collaborative Tech Hubs
-          - 50+ Global Ivy League Partners
-          - Admissions for Fall 2025 are currently open and closing soon!
+          Current live platform metrics:
+          - ${totalStudents} Active Students enrolled
+          - ${totalTeachers} Teachers on staff
+          - ${totalClasses} Active Classes
+          - ${activeExams} Currently Active Exams
+          - Admissions are currently open!
           
           For testing purposes, guests can log into the platform using these three default demo credentials:
           1. System Admin: email: "admin@edunexus.com", password: "admin123"

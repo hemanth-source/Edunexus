@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/AuthProvider";
 import { api } from "@/lib/api";
 import { Link, useNavigate } from "react-router";
@@ -13,39 +13,49 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, FileText, CheckCircle2 } from "lucide-react";
+import { Calendar, FileText, CheckCircle2, RefreshCw, WifiOff } from "lucide-react";
 
 // Custom Components
 import { AiInsightWidget } from "@/components/dashboard/ai-insight-widget";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { LeaderboardWidget } from "@/components/dashboard/Leaderboard";
+import {
+  StudentActiveClassWidget,
+  ActiveClassesNowWidget,
+  TodayAttendanceSnapshotWidget,
+} from "@/components/dashboard/live-class-widgets";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [statsData, setStatsData] = useState<any>({});
 
-  // 1. Fetch Data Logic
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        // THE REAL CALL
-        const { data } = await api.get("/dashboard/stats");
-        setStatsData(data);
-      } catch (error) {
-        console.error("Failed to load dashboard", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (user) fetchDashboardData();
+  const fetchDashboardData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get("/dashboard/stats");
+      setStatsData(data);
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        (err?.request ? "Network error — check your connection." : "Unexpected error loading dashboard.");
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
-  // 2. Loading State
-  if (loading) {
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // ── Full-page skeleton on initial load ───────────────────────────────────────
+  if (loading && !statsData?.totalStudents && !error) {
     return (
       <div className="p-8 space-y-6">
         <div className="flex items-center justify-between">
@@ -58,8 +68,8 @@ export default function Dashboard() {
           ))}
         </div>
         <div className="grid gap-4 md:grid-cols-7">
-          <Skeleton className="col-span-4 h-100" />
-          <Skeleton className="col-span-3 h-100" />
+          <Skeleton className="col-span-4 h-64" />
+          <Skeleton className="col-span-3 h-64" />
         </div>
       </div>
     );
@@ -76,7 +86,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center space-x-2">
-          {/* Role specific actions */}
           {user?.role === "admin" && (
             <Button onClick={() => navigate("/users/students")}>
               Manage Students
@@ -90,23 +99,55 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* --- TOP ROW: STATS --- */}
+      {/* --- STATS ERROR BANNER --- */}
+      {error && !loading && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span className="flex-1">{error}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+            onClick={fetchDashboardData}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-3 w-3 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* --- TOP ROW: STATS CARDS --- */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <DashboardStats role={user?.role || "student"} data={statsData} />
+        <DashboardStats
+          role={user?.role || "student"}
+          data={statsData}
+          loading={loading}
+          error={error}
+        />
       </div>
 
       {/* --- MAIN CONTENT GRID --- */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        {/* LEFT COLUMN (Content) */}
+
+        {/* LEFT COLUMN */}
         <div className="col-span-4 space-y-4">
-          {/* AI WIDGET */}
+          {/* AI Advisor */}
           <AiInsightWidget />
 
-          {/* GAMIFICATION LEADERBOARD */}
+          {/* Student: live class schedule widget */}
+          {user?.role === "student" && <StudentActiveClassWidget />}
+
+          {/* Admin/Teacher: school-wide live class view */}
+          {(user?.role === "admin" || user?.role === "teacher") && (
+            <ActiveClassesNowWidget />
+          )}
+
+          {/* Gamification Leaderboard */}
           <LeaderboardWidget />
 
-          {/* RECENT ACTIVITY CARD */}
-          {user?.role === "admin" && (
+          {/* Admin: Recent Activity */}
+          {user?.role === "admin" && statsData.recentActivity?.length > 0 && (
             <Card>
               <CardHeader>
                 <div>
@@ -130,9 +171,6 @@ export default function Dashboard() {
                           <p className="text-sm font-medium leading-none">
                             {activity}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            Just now
-                          </p>
                         </div>
                       </div>
                     )
@@ -143,8 +181,12 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* RIGHT COLUMN (Schedule/Quick Links) */}
+        {/* RIGHT COLUMN */}
         <div className="col-span-3 space-y-4">
+          {/* Admin: Today's attendance snapshot */}
+          {user?.role === "admin" && <TodayAttendanceSnapshotWidget />}
+
+          {/* Quick Links */}
           <Card>
             <CardHeader>
               <CardTitle>Quick Links</CardTitle>

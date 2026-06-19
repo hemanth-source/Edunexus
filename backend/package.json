@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "nodemon --exec tsx src/server.ts",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "test:dashboard": "tsx src/tests/dashboard.test.ts"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

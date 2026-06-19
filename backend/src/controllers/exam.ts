@@ -265,7 +265,7 @@ export const toggleExamStatus = async (req: Request, res: Response) => {
     
     // Send email notification to students if the exam was just activated
     if (exam.isActive) {
-      const students = await User.find({ role: "student", studentClass: exam.class });
+      const students = await User.find({ role: "student", studentClass: exam.class as any });
       for (const student of students) {
         if (student.email) {
           sendEmail({
@@ -351,7 +351,7 @@ export const submitExam = async (req: Request, res: Response) => {
       });
 
       const submission = await Submission.create({
-        exam: examId,
+        exam: examId as any,
         student: studentId,
         answers,
         score,
@@ -471,6 +471,375 @@ export const updateExamQuestions = async (req: Request, res: Response) => {
     });
 
     res.status(200).json({ message: "Questions updated successfully", exam });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXAM STATISTICS APIS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// @desc    Get detailed statistics for a single exam
+// @route   GET /api/exams/:id/stats
+// @access  Private (Teacher/Admin)
+export const getExamStats = async (req: Request, res: Response) => {
+  try {
+    const { id: examId } = req.params;
+    const user = (req as any).user;
+
+    const exam = await Exam.findById(examId)
+      .select("+questions.correctAnswer")
+      .populate("subject", "name")
+      .populate("class", "name")
+      .lean();
+
+    if (!exam) {
+      return res.status(404).json({ message: "Exam not found" });
+    }
+
+    // Authorization: teacher can only see stats for their own exams
+    if (user.role === "teacher" && exam.teacher.toString() !== user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized to view this exam's stats" });
+    }
+
+    // Fetch all submissions for this exam
+    const submissions = await Submission.find({ exam: examId })
+      .populate("student", "name email")
+      .lean();
+
+    const totalStudents = await User.countDocuments({ role: "student", studentClass: exam.class as any });
+    const totalSubmissions = submissions.length;
+    const submissionRate = totalStudents > 0 ? Math.round((totalSubmissions / totalStudents) * 100) : 0;
+
+    // Calculate total possible points for this exam
+    const maxScore = exam.questions.reduce((sum: number, q: any) => sum + (q.points || 1), 0);
+    const passingScore = Math.ceil(maxScore * 0.5); // 50% = pass
+
+    // Score statistics
+    const scores = submissions.map((s) => s.score);
+    const avgScore = scores.length > 0 ? parseFloat((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : 0;
+    const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
+    const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
+    const passCount = scores.filter((s) => s >= passingScore).length;
+    const failCount = scores.length - passCount;
+    const passRate = scores.length > 0 ? Math.round((passCount / scores.length) * 100) : 0;
+
+    // Score distribution buckets (0-20%, 21-40%, 41-60%, 61-80%, 81-100%)
+    const distribution = ["0-20", "21-40", "41-60", "61-80", "81-100"].map((range) => {
+      const parts = range.split("-");
+      const low = Number(parts[0] ?? 0);
+      const high = Number(parts[1] ?? 100);
+      const count = maxScore > 0
+        ? scores.filter((s) => {
+            const pct = (s / maxScore) * 100;
+            return pct >= low && pct <= high;
+          }).length
+        : 0;
+      return { range: `${range}%`, count };
+    });
+
+    // Top 5 scorers
+    const topScorers = [...submissions]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((s) => ({
+        student: (s.student as any)?.name || "Unknown",
+        email: (s.student as any)?.email || "",
+        score: s.score,
+        percentage: maxScore > 0 ? Math.round((s.score / maxScore) * 100) : 0,
+      }));
+
+    // Per-question accuracy (how many students got each question right)
+    const questionAccuracy = exam.questions.map((q: any) => {
+      const qId = q._id.toString();
+      let correct = 0;
+      for (const sub of submissions) {
+        const ans = sub.answers.find((a: any) => a.questionId === qId);
+        if (ans && ans.answer === q.correctAnswer) correct++;
+      }
+      const accuracy = totalSubmissions > 0 ? Math.round((correct / totalSubmissions) * 100) : 0;
+      return {
+        questionId: qId,
+        questionText: q.questionText.substring(0, 80) + (q.questionText.length > 80 ? "..." : ""),
+        correctCount: correct,
+        accuracy,
+      };
+    });
+
+    res.status(200).json({
+      examId,
+      title: exam.title,
+      subject: (exam.subject as any)?.name,
+      class: (exam.class as any)?.name,
+      maxScore,
+      passingScore,
+      totalStudentsInClass: totalStudents,
+      totalSubmissions,
+      submissionRate,
+      scores: {
+        average: avgScore,
+        highest: highestScore,
+        lowest: lowestScore,
+        averagePercentage: maxScore > 0 ? Math.round((avgScore / maxScore) * 100) : 0,
+      },
+      grading: {
+        passCount,
+        failCount,
+        passRate,
+        pendingGrading: submissions.filter((s) => s.score === 0).length,
+      },
+      distribution,
+      topScorers,
+      questionAccuracy,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get a teacher's overall exam portfolio statistics
+// @route   GET /api/exams/stats/teacher
+// @access  Private (Teacher/Admin)
+export const getTeacherExamStats = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const teacherId = req.query.teacherId || user._id;
+
+    // Admin can view any teacher; teachers are restricted to themselves
+    if (user.role === "teacher" && teacherId.toString() !== user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    const exams = await Exam.find({ teacher: teacherId })
+      .populate("subject", "name")
+      .populate("class", "name")
+      .lean();
+
+    const examIds = exams.map((e) => e._id);
+    const allSubmissions = await Submission.find({ exam: { $in: examIds } }).lean();
+
+    const totalExams = exams.length;
+    const activeExams = exams.filter((e) => e.isActive).length;
+    const totalSubmissions = allSubmissions.length;
+    const gradedSubmissions = allSubmissions.filter((s) => s.score > 0);
+    const pendingGrading = allSubmissions.filter((s) => s.score === 0).length;
+
+    const avgScore =
+      gradedSubmissions.length > 0
+        ? parseFloat((gradedSubmissions.reduce((sum, s) => sum + s.score, 0) / gradedSubmissions.length).toFixed(2))
+        : 0;
+
+    // Per-exam summary (last 10 exams)
+    const recentExams = await Promise.all(
+      exams.slice(0, 10).map(async (exam) => {
+        const subs = allSubmissions.filter((s) => s.exam.toString() === exam._id.toString());
+        const examAvg = subs.length > 0 ? subs.reduce((sum, s) => sum + s.score, 0) / subs.length : 0;
+        return {
+          examId: exam._id,
+          title: exam.title,
+          subject: (exam.subject as any)?.name,
+          class: (exam.class as any)?.name,
+          isActive: exam.isActive,
+          dueDate: exam.dueDate,
+          totalSubmissions: subs.length,
+          averageScore: parseFloat(examAvg.toFixed(2)),
+          pendingGrading: subs.filter((s) => s.score === 0).length,
+        };
+      })
+    );
+
+    res.status(200).json({
+      teacherId,
+      overview: {
+        totalExams,
+        activeExams,
+        inactiveExams: totalExams - activeExams,
+        totalSubmissions,
+        gradedSubmissions: gradedSubmissions.length,
+        pendingGrading,
+        averageScore: avgScore,
+      },
+      recentExams,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get exam statistics for an entire class
+// @route   GET /api/exams/stats/class/:classId
+// @access  Private (Teacher/Admin)
+export const getClassExamStats = async (req: Request, res: Response) => {
+  try {
+    const { classId } = req.params;
+
+    const exams = await Exam.find({ class: classId })
+      .populate("subject", "name")
+      .populate("teacher", "name")
+      .lean();
+
+    if (exams.length === 0) {
+      return res.status(200).json({ classId, totalExams: 0, exams: [] });
+    }
+
+    const examIds = exams.map((e) => e._id);
+    const allSubmissions = await Submission.find({ exam: { $in: examIds } }).lean();
+    const totalStudents = await User.countDocuments({ role: "student", studentClass: classId });
+
+    const examSummaries = exams.map((exam) => {
+      const subs = allSubmissions.filter((s) => s.exam.toString() === exam._id.toString());
+      const totalSubs = subs.length;
+      const gradedSubs = subs.filter((s) => s.score > 0);
+      const avgScore = gradedSubs.length > 0
+        ? parseFloat((gradedSubs.reduce((sum, s) => sum + s.score, 0) / gradedSubs.length).toFixed(2))
+        : 0;
+      const maxScore = exam.questions.reduce((sum: number, q: any) => sum + (q.points || 1), 0);
+      const submissionRate = totalStudents > 0 ? Math.round((totalSubs / totalStudents) * 100) : 0;
+      const passingScore = Math.ceil(maxScore * 0.5);
+      const passCount = subs.filter((s) => s.score >= passingScore).length;
+
+      return {
+        examId: exam._id,
+        title: exam.title,
+        subject: (exam.subject as any)?.name,
+        teacher: (exam.teacher as any)?.name,
+        isActive: exam.isActive,
+        dueDate: exam.dueDate,
+        maxScore,
+        totalSubmissions: totalSubs,
+        submissionRate,
+        averageScore: avgScore,
+        averagePercentage: maxScore > 0 ? Math.round((avgScore / maxScore) * 100) : 0,
+        passCount,
+        passRate: totalSubs > 0 ? Math.round((passCount / totalSubs) * 100) : 0,
+        pendingGrading: subs.filter((s) => s.score === 0).length,
+      };
+    });
+
+    // Class aggregate
+    const classAvgScore =
+      examSummaries.length > 0
+        ? parseFloat((examSummaries.reduce((sum, e) => sum + e.averageScore, 0) / examSummaries.length).toFixed(2))
+        : 0;
+
+    res.status(200).json({
+      classId,
+      totalStudentsInClass: totalStudents,
+      totalExams: exams.length,
+      activeExams: exams.filter((e) => e.isActive).length,
+      classAverageScore: classAvgScore,
+      totalSubmissions: allSubmissions.length,
+      exams: examSummaries,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get platform-wide exam overview (Admin only)
+// @route   GET /api/exams/stats/overview
+// @access  Private (Admin)
+export const getExamOverview = async (req: Request, res: Response) => {
+  try {
+    // Platform-level counts
+    const [totalExams, activeExams, totalSubmissions] = await Promise.all([
+      Exam.countDocuments(),
+      Exam.countDocuments({ isActive: true }),
+      Submission.countDocuments(),
+    ]);
+
+    // Global average score across all graded submissions
+    const gradedSubmissions = await Submission.find({ score: { $gt: 0 } }).select("score").lean();
+    const globalAvgScore =
+      gradedSubmissions.length > 0
+        ? parseFloat((gradedSubmissions.reduce((sum, s) => sum + s.score, 0) / gradedSubmissions.length).toFixed(2))
+        : 0;
+    const pendingGrading = await Submission.countDocuments({ score: 0 });
+
+    // Exams due in the next 7 days
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const upcomingExams = await Exam.find({
+      isActive: true,
+      dueDate: { $gte: new Date(), $lte: nextWeek },
+    })
+      .populate("subject", "name")
+      .populate("class", "name")
+      .populate("teacher", "name")
+      .select("title dueDate subject class teacher")
+      .sort({ dueDate: 1 })
+      .lean();
+
+    // Submission trend: daily counts for the last 14 days
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const recentSubmissions = await Submission.find({
+      submittedAt: { $gte: fourteenDaysAgo },
+    })
+      .select("submittedAt score")
+      .lean();
+
+    const trendMap: Record<string, { count: number; totalScore: number }> = {};
+    for (const sub of recentSubmissions) {
+      const day = new Date(sub.submittedAt).toISOString().split("T")[0] ?? "unknown";
+      if (!trendMap[day]) trendMap[day] = { count: 0, totalScore: 0 };
+      trendMap[day]!.count++;
+      trendMap[day]!.totalScore += sub.score;
+    }
+    const submissionTrend = Object.entries(trendMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { count, totalScore }]) => ({
+        date,
+        submissions: count,
+        averageScore: count > 0 ? parseFloat((totalScore / count).toFixed(2)) : 0,
+      }));
+
+    // Top 5 exams by submission count
+    const topExamsBySubmission = await Submission.aggregate([
+      { $group: { _id: "$exam", count: { $sum: 1 }, avgScore: { $avg: "$score" } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: "exams",
+          localField: "_id",
+          foreignField: "_id",
+          as: "exam",
+        },
+      },
+      { $unwind: "$exam" },
+      {
+        $project: {
+          examId: "$_id",
+          title: "$exam.title",
+          submissions: "$count",
+          averageScore: { $round: ["$avgScore", 2] },
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      platform: {
+        totalExams,
+        activeExams,
+        inactiveExams: totalExams - activeExams,
+        totalSubmissions,
+        gradedSubmissions: gradedSubmissions.length,
+        pendingGrading,
+        globalAverageScore: globalAvgScore,
+      },
+      upcomingExams: upcomingExams.map((e) => ({
+        examId: e._id,
+        title: e.title,
+        subject: (e.subject as any)?.name,
+        class: (e.class as any)?.name,
+        teacher: (e.teacher as any)?.name,
+        dueDate: e.dueDate,
+      })),
+      submissionTrend,
+      topExamsBySubmission,
+    });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

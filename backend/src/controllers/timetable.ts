@@ -78,7 +78,7 @@ export const generateTimetable = async (req: Request, res: Response) => {
           for (let p = 0; p < (settings.periods || 5); p++) {
             const subject = contextData.subjects[p % contextData.subjects.length];
             const teacher = contextData.teachers.find((t: any) =>
-              t.subjects.some((subId: any) => subId.toString() === subject.id.toString())
+              t.subjects.some((subId: any) => subId.toString() === subject?.id?.toString())
             ) || contextData.teachers[0];
 
             const startTime = `${String(currentHour).padStart(2, "0")}:00`;
@@ -86,7 +86,7 @@ export const generateTimetable = async (req: Request, res: Response) => {
             currentHour += 1;
 
             periods.push({
-              subject: subject.id,
+              subject: subject?.id,
               teacher: teacher ? teacher.id : contextData.teachers[0]?.id,
               startTime,
               endTime,
@@ -254,5 +254,211 @@ export const getTeacherPersonalTimetable = async (req: Request, res: Response) =
     res.json({ schedule: personalSchedule });
   } catch (error: any) {
     res.status(500).json({ message: error.message || "Failed to compile teacher timetable" });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVE CLASSES BASED ON TIMETABLE SCHEDULE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Helper: returns current time as "HH:MM" string in 24h format.
+ * Uses UTC+5:30 offset if TIMEZONE env var is not set.
+ */
+const getCurrentTimeStr = (): string => {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+/**
+ * Helper: returns today's full day name ("Monday", "Tuesday", etc.)
+ */
+const getCurrentDayName = (): string =>
+  new Date().toLocaleDateString("en-US", { weekday: "long" });
+
+// @desc    Get all classes currently in session (school-wide live view)
+// @route   GET /api/timetables/active-now
+// @access  Private (Admin, Teacher)
+export const getActiveClassesNow = async (req: Request, res: Response) => {
+  try {
+    const today = getCurrentDayName();
+    const currentTime = getCurrentTimeStr();
+
+    // Fetch all timetables that have a schedule for today
+    const timetables = await Timetable.find({ "schedule.day": today })
+      .populate("class", "name capacity")
+      .populate("schedule.periods.subject", "name code")
+      .populate("schedule.periods.teacher", "name email")
+      .lean();
+
+    const activeClasses: any[] = [];
+    const upcomingClasses: any[] = [];
+
+    for (const tt of timetables) {
+      const todaySchedule = tt.schedule.find((s) => s.day === today);
+      if (!todaySchedule) continue;
+
+      for (const period of todaySchedule.periods) {
+        const { startTime, endTime } = period;
+        if (!startTime || !endTime) continue;
+
+        const isActive = currentTime >= startTime && currentTime <= endTime;
+        const isUpcoming = currentTime < startTime;
+
+        const periodData = {
+          classId: (tt.class as any)?._id,
+          className: (tt.class as any)?.name,
+          subject: {
+            name: (period.subject as any)?.name || "Unknown Subject",
+            code: (period.subject as any)?.code || "",
+          },
+          teacher: {
+            name: (period.teacher as any)?.name || "Unknown Teacher",
+            email: (period.teacher as any)?.email || "",
+          },
+          startTime,
+          endTime,
+          minutesRemaining: isActive
+            ? (() => {
+                const [eh, em] = endTime.split(":").map(Number);
+                const [ch, cm] = currentTime.split(":").map(Number);
+                return (eh ?? 0) * 60 + (em ?? 0) - (ch ?? 0) * 60 - (cm ?? 0);
+              })()
+            : null,
+          minutesUntilStart: isUpcoming
+            ? (() => {
+                const [sh, sm] = startTime.split(":").map(Number);
+                const [ch, cm] = currentTime.split(":").map(Number);
+                return (sh ?? 0) * 60 + (sm ?? 0) - (ch ?? 0) * 60 - (cm ?? 0);
+              })()
+            : null,
+        };
+
+        if (isActive) activeClasses.push(periodData);
+        else if (isUpcoming) upcomingClasses.push(periodData);
+      }
+    }
+
+    // Sort upcoming by start time
+    upcomingClasses.sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+    res.json({
+      day: today,
+      currentTime,
+      totalActive: activeClasses.length,
+      activeClasses,
+      nextUpcoming: upcomingClasses.slice(0, 5), // Next 5 upcoming periods
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Server Error" });
+  }
+};
+
+// @desc    Get the current active period for the logged-in student's class
+// @route   GET /api/timetables/active-now/student
+// @access  Private (Student)
+export const getStudentActiveClass = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const classId = user.studentClass;
+
+    if (!classId) {
+      return res.status(400).json({ message: "You are not enrolled in a class." });
+    }
+
+    const today = getCurrentDayName();
+    const currentTime = getCurrentTimeStr();
+
+    const timetable = await Timetable.findOne({
+      class: classId,
+      "schedule.day": today,
+    })
+      .populate("class", "name")
+      .populate("schedule.periods.subject", "name code")
+      .populate("schedule.periods.teacher", "name email")
+      .lean();
+
+    if (!timetable) {
+      return res.json({
+        day: today,
+        currentTime,
+        activePeriod: null,
+        nextPeriod: null,
+        message: "No timetable found for your class today.",
+      });
+    }
+
+    const todaySchedule = timetable.schedule.find((s) => s.day === today);
+    const sortedPeriods = (todaySchedule?.periods ?? []).filter(
+      (p) => p.startTime && p.endTime
+    );
+
+    let activePeriod: any = null;
+    let nextPeriod: any = null;
+
+    for (const period of sortedPeriods) {
+      const { startTime, endTime } = period;
+
+      if (currentTime >= startTime && currentTime <= endTime) {
+        const [eh, em] = endTime.split(":").map(Number);
+        const [ch, cm] = currentTime.split(":").map(Number);
+        activePeriod = {
+          subject: {
+            name: (period.subject as any)?.name || "Unknown",
+            code: (period.subject as any)?.code || "",
+          },
+          teacher: {
+            name: (period.teacher as any)?.name || "Unknown",
+            email: (period.teacher as any)?.email || "",
+          },
+          startTime,
+          endTime,
+          minutesRemaining: (eh ?? 0) * 60 + (em ?? 0) - (ch ?? 0) * 60 - (cm ?? 0),
+        };
+      } else if (!activePeriod && currentTime < startTime && !nextPeriod) {
+        const [sh, sm] = startTime.split(":").map(Number);
+        const [ch, cm] = currentTime.split(":").map(Number);
+        nextPeriod = {
+          subject: {
+            name: (period.subject as any)?.name || "Unknown",
+            code: (period.subject as any)?.code || "",
+          },
+          teacher: {
+            name: (period.teacher as any)?.name || "Unknown",
+            email: (period.teacher as any)?.email || "",
+          },
+          startTime,
+          endTime,
+          minutesUntilStart: (sh ?? 0) * 60 + (sm ?? 0) - (ch ?? 0) * 60 - (cm ?? 0),
+        };
+      }
+    }
+
+    // Build today's full day view
+    const todayPeriods = sortedPeriods.map((p) => ({
+      subject: (p.subject as any)?.name || "Unknown",
+      teacher: (p.teacher as any)?.name || "Unknown",
+      startTime: p.startTime,
+      endTime: p.endTime,
+      status:
+        currentTime >= p.startTime && currentTime <= p.endTime
+          ? "in-progress"
+          : currentTime > p.endTime
+          ? "completed"
+          : "upcoming",
+    }));
+
+    res.json({
+      day: today,
+      currentTime,
+      className: (timetable.class as any)?.name,
+      activePeriod,
+      nextPeriod,
+      todayPeriods,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Server Error" });
   }
 };

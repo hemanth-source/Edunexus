@@ -84,7 +84,7 @@ export const generateTimeTable = inngest.createFunction(
           for (let p = 0; p < (settings.periods || 5); p++) {
             const subject = contextData.subjects[p % contextData.subjects.length];
             const teacher = contextData.teachers.find((t: any) => 
-              t.subjects.some((subId: any) => subId.toString() === subject.id.toString())
+              t.subjects.some((subId: any) => subId.toString() === subject?.id?.toString())
             ) || contextData.teachers[0];
 
             const startTime = `${String(currentHour).padStart(2, "0")}:00`;
@@ -92,7 +92,7 @@ export const generateTimeTable = inngest.createFunction(
             currentHour += 1;
 
             periods.push({
-              subject: subject.id,
+              subject: subject?.id,
               teacher: teacher ? teacher.id : contextData.teachers[0]?.id,
               startTime,
               endTime
